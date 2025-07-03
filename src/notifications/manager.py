@@ -53,17 +53,12 @@ class NotificationManager:
         """Send beautiful multi-channel notifications"""
         
         try:
-            # Send Discord notification with rich embed
-            await self._send_discord_notification(
-                pool_address, token0, token1, fee, liquidity, notification_type
-            )
-            
-            # Send email notification
+            # Send email notification first (most reliable)
             await self._send_email_notification(
                 pool_address, token0, token1, fee, liquidity, notification_type
             )
             
-            # Send to other channels
+            # Send to all other channels (Discord, etc.)
             await self._send_other_notifications(
                 pool_address, token0, token1, fee, liquidity, notification_type
             )
@@ -73,41 +68,6 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"❌ Notification sending failed: {e}")
             raise
-    
-    async def _send_discord_notification(self, pool_address: str, token0: str, token1: str,
-                                       fee: int, liquidity: int, notification_type: str):
-        """Send Discord notification with rich embed"""
-        try:
-            # Find Discord servers
-            discord_servers = [s for s in self.apobj.servers if 'discord' in str(s)]
-            
-            if not discord_servers:
-                logger.debug("No Discord channels configured")
-                return
-            
-            # Get Discord embed
-            if notification_type == "pool_created":
-                embed = self.discord_templates.get_pool_created_embed(
-                    pool_address, token0, token1, fee, liquidity, self.settings
-                )
-            else:
-                embed = self.discord_templates.get_liquidity_added_embed(
-                    pool_address, token0, token1, fee, liquidity, self.settings
-                )
-            
-            # Send to Discord with rich embed
-            for server in discord_servers:
-                try:
-                    success = server.notify(title="", body="", **embed)
-                    if success:
-                        logger.info(f"📱 Discord notification sent successfully")
-                    else:
-                        logger.warning(f"⚠️ Discord notification failed")
-                except Exception as e:
-                    logger.error(f"❌ Discord notification error: {e}")
-                    
-        except Exception as e:
-            logger.error(f"❌ Discord notification setup failed: {e}")
     
     async def _send_email_notification(self, pool_address: str, token0: str, token1: str,
                                      fee: int, liquidity: int, notification_type: str):
@@ -147,54 +107,57 @@ class NotificationManager:
     
     async def _send_other_notifications(self, pool_address: str, token0: str, token1: str,
                                       fee: int, liquidity: int, notification_type: str):
-        """Send to other notification channels"""
+        """Send to all other notification channels (Discord, Slack, etc.)"""
         try:
-            # Get simple message for other channels
-            simple_message = self._get_simple_message(
+            if not self.apobj.servers:
+                logger.debug("No additional notification channels configured")
+                return
+            
+            # Get message for channels
+            subject, message = self._get_channel_message(
                 pool_address, token0, token1, fee, liquidity, notification_type
             )
             
-            # Send to non-Discord channels
-            other_servers = [s for s in self.apobj.servers if 'discord' not in str(s)]
+            # Send via Apprise to all channels
+            success = self.apobj.notify(title=subject, body=message)
             
-            if other_servers:
-                temp_apobj = apprise.Apprise()
-                for server in other_servers:
-                    temp_apobj.add(server)
-                
-                subject = f"🚀 {self.settings.token_symbol} {'TRADEABLE' if notification_type == 'liquidity_added' else 'Pool Discovered'}"
-                success = temp_apobj.notify(title=subject, body=simple_message)
-                
-                if success:
-                    logger.info(f"📱 Other notifications sent to {len(other_servers)} channels")
-                else:
-                    logger.warning(f"⚠️ Some other notifications failed")
+            if success:
+                logger.info(f"📱 Notifications sent to {len(self.apobj.servers)} channels (Discord, etc.)")
+            else:
+                logger.warning(f"⚠️ Some notifications to external channels failed")
                     
         except Exception as e:
-            logger.error(f"❌ Other notifications failed: {e}")
+            logger.error(f"❌ External notifications failed: {e}")
     
-    def _get_simple_message(self, pool_address: str, token0: str, token1: str,
-                          fee: int, liquidity: int, notification_type: str) -> str:
-        """Simple message for non-rich channels"""
+    def _get_channel_message(self, pool_address: str, token0: str, token1: str,
+                           fee: int, liquidity: int, notification_type: str) -> tuple[str, str]:
+        """Get subject and message for notification channels"""
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         
         if notification_type == "pool_created":
-            return f"""🔍 {self.settings.token_symbol} Pool Discovered
+            subject = f"🔍 {self.settings.token_symbol} Pool Discovered"
+            message = f"""**{self.settings.token_symbol} Pool Discovered!**
 
-🕒 {timestamp}
-📍 Pool: {pool_address}
-💸 Fee: {fee/10000:.2f}% ({fee} basis points)
-💰 Liquidity: {liquidity:,} {'🔥 TRADEABLE!' if liquidity >= self.settings.min_liquidity_threshold else '⚠️ Monitoring...'}
+🕒 **Time:** {timestamp}
+📍 **Pool:** `{pool_address}`
+💸 **Fee:** {fee/10000:.2f}% ({fee} basis points)
+💰 **Liquidity:** {liquidity:,} {'🔥 **TRADEABLE!**' if liquidity >= self.settings.min_liquidity_threshold else '⚠️ *Monitoring...*'}
 
-🔄 Trade: https://app.uniswap.org/#/swap?inputCurrency=ETH&outputCurrency={self.settings.token_address}"""
-        
+🔄 **Trade Now:** https://app.uniswap.org/#/swap?inputCurrency=ETH&outputCurrency={self.settings.token_address}"""
+            
         else:  # liquidity_added
-            return f"""🚀 {self.settings.token_symbol} NOW TRADEABLE! 🔥
+            subject = f"🚀 {self.settings.token_symbol} NOW TRADEABLE! 🔥"
+            message = f"""**🏆 TRADING ALERT: {self.settings.token_symbol} IS NOW TRADEABLE! 🚀**
 
-🏆 TRADING ALERT: Pool has sufficient liquidity!
-🕒 {timestamp}
-📍 Pool: {pool_address}
-💰 Liquidity: {liquidity:,} - READY TO TRADE!
+**Pool has sufficient liquidity for trading!**
 
-⚡ TRADE NOW: https://app.uniswap.org/#/swap?inputCurrency=ETH&outputCurrency={self.settings.token_address}""" 
+🕒 **Time:** {timestamp}
+📍 **Pool:** `{pool_address}`
+💰 **Liquidity:** {liquidity:,} - **READY TO TRADE!**
+
+⚡ **TRADE NOW:** https://app.uniswap.org/#/swap?inputCurrency=ETH&outputCurrency={self.settings.token_address}
+
+🎯 This is your moment - the pool is ready for trading!"""
+        
+        return subject, message 
