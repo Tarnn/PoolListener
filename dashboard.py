@@ -25,13 +25,13 @@ def load_data():
         
         # Load pools data
         pools_df = pd.read_sql_query("""
-            SELECT * FROM pools 
+            SELECT * FROM discovered_pools 
             ORDER BY discovered_at DESC
         """, conn)
         
         # Load notifications data  
         notifications_df = pd.read_sql_query("""
-            SELECT * FROM notifications 
+            SELECT * FROM notification_log 
             ORDER BY sent_at DESC
         """, conn)
         

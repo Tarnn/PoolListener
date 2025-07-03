@@ -260,19 +260,43 @@ class MetricsServer:
     
     def get_pools_discovered(self) -> int:
         """Get total pools discovered"""
-        return int(self.pools_discovered_total._value.sum())
+        try:
+            # Sum all values across different label combinations
+            total = 0
+            for sample in self.pools_discovered_total.collect()[0].samples:
+                total += sample.value
+            return int(total)
+        except:
+            return 0
     
     def get_notifications_sent(self) -> int:
         """Get total notifications sent"""
-        return int(self.notifications_sent_total._value.sum())
+        try:
+            # Sum all values across different label combinations
+            total = 0
+            for sample in self.notifications_sent_total.collect()[0].samples:
+                total += sample.value
+            return int(total)
+        except:
+            return 0
     
     def get_liquidity_checks(self) -> int:
         """Get total liquidity checks"""
-        return int(self.liquidity_checks_total._value.sum())
+        try:
+            # Sum all values across different label combinations
+            total = 0
+            for sample in self.liquidity_checks_total.collect()[0].samples:
+                total += sample.value
+            return int(total)
+        except:
+            return 0
     
     def get_active_pools(self) -> int:
         """Get active pools count"""
-        return int(self.active_pools_gauge._value.get())
+        try:
+            return int(self.active_pools_gauge._value.get())
+        except:
+            return 0
     
     def start(self):
         """Start metrics server"""
