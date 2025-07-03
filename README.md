@@ -1,15 +1,16 @@
-# WLFI Pool Listener
+# Uniswap V3 Pool Listener
 
-A Python application that monitors the Uniswap V3 factory for new liquidity pools involving the WLFI token and sends email notifications when such pools are created.
+A Python application that monitors the Uniswap V3 factory for new liquidity pools involving any specified token and sends email notifications when such pools are created.
 
 ## Features
 
 - 🔍 **Real-time monitoring**: Continuously listens for new Uniswap V3 pool creation events
-- 🎯 **WLFI-specific**: Only triggers alerts for pools involving the WLFI token
-- 📧 **Email notifications**: Sends detailed email alerts when new pools are detected
+- 🎯 **Token-specific**: Only triggers alerts for pools involving your specified token
+- 📧 **Multiple email notifications**: Sends detailed email alerts to multiple recipients
 - 🔄 **Automatic recovery**: Handles connection errors and retries automatically
 - ⚡ **Efficient**: Uses event filtering to minimize API calls
 - 🔒 **Secure**: Uses environment variables for sensitive configuration
+- 💰 **Liquidity verification**: Checks if pools have actual liquidity (tradeable)
 
 ## Requirements
 
@@ -37,9 +38,9 @@ The application uses environment variables for all configuration. You can set th
 ### Method 1: Export Environment Variables
 ```bash
 export INFURA_API_KEY="your_infura_project_id"
-export WLFI_ADDRESS="0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6"
+export TOKEN_ADDRESS="0x1234567890abcdef1234567890abcdef12345678"
 export SENDER_EMAIL="your_email@gmail.com"
-export RECEIVER_EMAIL="recipient@gmail.com"
+export RECEIVER_EMAIL="recipient1@gmail.com,recipient2@gmail.com,recipient3@gmail.com"
 export EMAIL_PASSWORD="your_app_specific_password"
 ```
 
@@ -48,22 +49,23 @@ Create a `.env` file in the project directory:
 ```env
 # Required Configuration
 INFURA_API_KEY=your_infura_project_id
-WLFI_ADDRESS=0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6
+TOKEN_ADDRESS=0x1234567890abcdef1234567890abcdef12345678
 SENDER_EMAIL=your_email@gmail.com
-RECEIVER_EMAIL=recipient@gmail.com
+RECEIVER_EMAIL=recipient1@gmail.com,recipient2@gmail.com
 EMAIL_PASSWORD=your_app_specific_password
 
 # Optional Configuration (with defaults shown)
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 POLLING_INTERVAL=12
+TOKEN_SYMBOL=TOKEN
 ```
 
-**Important**: Add `.env` to your `.gitignore` file.
+**Important**: Add `.env` to your `.gitignore` file to avoid committing sensitive information.
 
 ### Method 3: Set Variables Before Running
 ```bash
-INFURA_API_KEY="your_key" WLFI_ADDRESS="0x..." python poolListener.py
+INFURA_API_KEY="your_key" TOKEN_ADDRESS="0x..." python poolListener.py
 ```
 
 ## Required Environment Variables
@@ -71,9 +73,9 @@ INFURA_API_KEY="your_key" WLFI_ADDRESS="0x..." python poolListener.py
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `INFURA_API_KEY` | Your Infura project ID | `abc123def456...` |
-| `WLFI_ADDRESS` | WLFI token contract address | `0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6` |
+| `TOKEN_ADDRESS` | Target token contract address | `0x1234567890abcdef...` |
 | `SENDER_EMAIL` | Email address to send from | `alerts@yourdomain.com` |
-| `RECEIVER_EMAIL` | Email address to send to | `you@email.com` |
+| `RECEIVER_EMAIL` | Email addresses to send to (comma-separated) | `user1@email.com,user2@email.com` |
 | `EMAIL_PASSWORD` | App-specific password for sender email | `abcd efgh ijkl mnop` |
 
 ## Optional Environment Variables
@@ -83,6 +85,7 @@ INFURA_API_KEY="your_key" WLFI_ADDRESS="0x..." python poolListener.py
 | `SMTP_SERVER` | SMTP server hostname | `smtp.gmail.com` |
 | `SMTP_PORT` | SMTP server port | `587` |
 | `POLLING_INTERVAL` | Seconds between blockchain polls | `12` |
+| `TOKEN_SYMBOL` | Token symbol for display in messages | `TOKEN` |
 
 ## Getting Required Information
 
@@ -98,9 +101,12 @@ INFURA_API_KEY="your_key" WLFI_ADDRESS="0x..." python poolListener.py
 3. Security → App passwords
 4. Generate a new app password for this application
 
-### WLFI Token Address
-The WLFI token address is: `0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6`
-You can verify this on [Etherscan](https://etherscan.io/token/0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6)
+### Token Address
+Find your token's contract address from:
+- [Etherscan](https://etherscan.io/)
+- [CoinGecko](https://coingecko.com/)
+- [CoinMarketCap](https://coinmarketcap.com/)
+- The token's official website
 
 ## Usage
 
@@ -122,7 +128,7 @@ The application will:
 2. Connect to Ethereum mainnet via Infura
 3. Start monitoring from the latest block
 4. Check for new Uniswap V3 pool creation events
-5. Send email notifications for any pools involving WLFI
+5. Send email notifications for any pools involving your target token
 6. Continue running until manually stopped (Ctrl+C)
 
 ## How It Works
@@ -130,17 +136,28 @@ The application will:
 1. **Configuration**: Loads all settings from environment variables with validation
 2. **Connection**: Establishes a connection to Ethereum mainnet using Web3 and Infura
 3. **Event Monitoring**: Listens for `PoolCreated` events from the Uniswap V3 factory contract
-4. **Filtering**: Checks if either token in the new pool matches the WLFI address
-5. **Notification**: Sends email alerts with pool details when a match is found
-6. **Continuous Operation**: Polls for new blocks at configurable intervals
+4. **Filtering**: Checks if either token in the new pool matches your target token address
+5. **Liquidity Verification**: Checks if the pool has actual liquidity (tradeable)
+6. **Notification**: Sends email alerts to all recipients with pool details
+7. **Continuous Operation**: Polls for new blocks at configurable intervals
 
 ## Email Notification Format
 
-When a new WLFI pool is detected, you'll receive an email with:
+When a new pool is detected involving your target token, all recipients will receive an email with:
 - Pool contract address
 - Token addresses (token0 and token1)
 - Fee tier
-- Block information
+- Liquidity status (tradeable or not)
+- Direct Etherscan and Uniswap links
+
+## Multiple Recipients
+
+The `RECEIVER_EMAIL` variable supports multiple email addresses separated by commas:
+```env
+RECEIVER_EMAIL=user1@gmail.com,user2@yahoo.com,alerts@company.com
+```
+
+All recipients will receive the same notification when a pool is detected.
 
 ## Security Considerations
 
@@ -148,7 +165,7 @@ When a new WLFI pool is detected, you'll receive an email with:
 - **Never commit secrets**: Add `.env` to your `.gitignore` file
 - **App-specific passwords**: Use Gmail app-specific passwords instead of your main password
 - **Rate limiting**: Be aware of API rate limits on your Infura plan
-- **Token verification**: Always verify the WLFI token address from official sources
+- **Token verification**: Always verify token addresses from official sources
 
 ## Troubleshooting
 
@@ -157,14 +174,15 @@ When a new WLFI pool is detected, you'll receive an email with:
 1. **Configuration errors**: The app will show exactly which environment variables are missing
 2. **Connection failed**: Check your Infura API key and internet connection
 3. **Email not sending**: Verify Gmail app password and sender email configuration
-4. **No events detected**: Ensure the WLFI token address is correct
+4. **No events detected**: Ensure the token address is correct
 5. **Rate limit errors**: Consider upgrading your Infura plan or increasing polling interval
 
 ### Environment Variable Debugging
 ```bash
 # Check if variables are set
 echo $INFURA_API_KEY
-echo $WLFI_ADDRESS
+echo $TOKEN_ADDRESS
+echo $RECEIVER_EMAIL
 ```
 
 ### Logs
@@ -182,7 +200,8 @@ The application provides console output for:
 You can customize the application by modifying environment variables:
 - Change `POLLING_INTERVAL` to poll more or less frequently
 - Use different `SMTP_SERVER` and `SMTP_PORT` for other email providers
-- Monitor different tokens by changing `WLFI_ADDRESS`
+- Monitor different tokens by changing `TOKEN_ADDRESS`
+- Add more recipients by updating `RECEIVER_EMAIL`
 
 Advanced customizations require code changes:
 - Monitor multiple tokens simultaneously
@@ -198,12 +217,12 @@ Advanced customizations require code changes:
 # Required - Get from https://infura.io/
 INFURA_API_KEY=
 
-# Required - WLFI token contract address
-WLFI_ADDRESS=0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6
+# Required - Token contract address you want to monitor
+TOKEN_ADDRESS=
 
 # Required - Email configuration
 SENDER_EMAIL=
-RECEIVER_EMAIL=
+RECEIVER_EMAIL=email1@gmail.com,email2@gmail.com
 EMAIL_PASSWORD=
 
 # Optional - SMTP configuration (defaults shown)
@@ -212,7 +231,19 @@ EMAIL_PASSWORD=
 
 # Optional - Polling interval in seconds (default: 12)
 # POLLING_INTERVAL=12
+
+# Optional - Token symbol for display (default: TOKEN)
+# TOKEN_SYMBOL=MYTOKEN
 ```
+
+## Use Cases
+
+This tool is perfect for:
+- 🚀 **New token launches**: Get notified when your token becomes tradeable
+- 📊 **DeFi monitoring**: Track when liquidity is added to specific tokens
+- 🔍 **Market research**: Monitor when new trading pairs are created
+- 📈 **Trading opportunities**: Be first to know when tokens become available
+- 🏢 **Business intelligence**: Track competitor token launches
 
 ## Contributing
 

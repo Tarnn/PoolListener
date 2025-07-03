@@ -24,7 +24,7 @@ def get_optional_env(var_name, default_value):
 # Load configuration
 try:
     INFURA_API_KEY = get_required_env('INFURA_API_KEY')
-    WLFI_ADDRESS = get_required_env('WLFI_ADDRESS')
+    TOKEN_ADDRESS = get_required_env('TOKEN_ADDRESS')
     SENDER_EMAIL = get_required_env('SENDER_EMAIL')
     RECEIVER_EMAIL = get_required_env('RECEIVER_EMAIL')
     EMAIL_PASSWORD = get_required_env('EMAIL_PASSWORD')
@@ -33,19 +33,24 @@ try:
     SMTP_SERVER = get_optional_env('SMTP_SERVER', 'smtp.gmail.com')
     SMTP_PORT = int(get_optional_env('SMTP_PORT', '587'))
     POLLING_INTERVAL = int(get_optional_env('POLLING_INTERVAL', '12'))
+    TOKEN_SYMBOL = get_optional_env('TOKEN_SYMBOL', 'TOKEN')
+    
+    # Parse multiple email addresses
+    RECEIVER_EMAILS = [email.strip() for email in RECEIVER_EMAIL.split(',')]
     
 except ValueError as e:
     print(f"Configuration Error: {e}")
     print("\nPlease set the required environment variables:")
     print("- INFURA_API_KEY: Your Infura project ID")
-    print("- WLFI_ADDRESS: WLFI token contract address")
+    print("- TOKEN_ADDRESS: Target token contract address")
     print("- SENDER_EMAIL: Your email address")
-    print("- RECEIVER_EMAIL: Recipient email address")
+    print("- RECEIVER_EMAIL: Recipient email address(es) (comma-separated)")
     print("- EMAIL_PASSWORD: Your email app-specific password")
     print("\nOptional environment variables:")
     print("- SMTP_SERVER: SMTP server (default: smtp.gmail.com)")
     print("- SMTP_PORT: SMTP port (default: 587)")
     print("- POLLING_INTERVAL: Seconds between polls (default: 12)")
+    print("- TOKEN_SYMBOL: Token symbol for display (default: TOKEN)")
     exit(1)
 
 # Web3 setup
@@ -58,6 +63,8 @@ if not w3.is_connected():
 
 print(f"✅ Successfully connected to Ethereum mainnet")
 print(f"📡 Using Infura endpoint: {infura_url}")
+print(f"🎯 Monitoring token: {TOKEN_ADDRESS} ({TOKEN_SYMBOL})")
+print(f"📧 Will notify {len(RECEIVER_EMAILS)} recipient(s): {', '.join(RECEIVER_EMAILS)}")
 
 # Uniswap V3 Factory contract details
 factory_address = '0x1F98431c8aD98523631AE4a59f267346ea31F984'  # Uniswap V3 factory address
@@ -80,7 +87,7 @@ contract = w3.eth.contract(address=factory_address, abi=factory_abi)
 
 # Email configuration
 sender_email = SENDER_EMAIL
-receiver_email = RECEIVER_EMAIL
+receiver_emails = RECEIVER_EMAILS
 password = EMAIL_PASSWORD
 
 # Function to check if a pool has liquidity
@@ -123,8 +130,8 @@ def check_pool_liquidity(pool_address):
 
 # Enhanced function to send email notification with liquidity info
 def send_email(pool_address, token0, token1, fee, liquidity=None):
-    """Send an email notification when a new pool involving WLFI is detected."""
-    subject = "🚨 WLFI Pool Created - Token May Be Tradeable!"
+    """Send an email notification when a new pool involving the target token is detected."""
+    subject = f"🚨 {TOKEN_SYMBOL} Pool Created - Token May Be Tradeable!"
     
     liquidity_info = ""
     if liquidity is not None:
@@ -133,7 +140,7 @@ def send_email(pool_address, token0, token1, fee, liquidity=None):
         else:
             liquidity_info = f"\n⚠️  Pool Liquidity: {liquidity} (NO LIQUIDITY YET)"
     
-    body = f"🎉 A new Uniswap V3 pool has been created involving WLFI!\n\n" \
+    body = f"🎉 A new Uniswap V3 pool has been created involving {TOKEN_SYMBOL}!\n\n" \
            f"📍 Pool address: {pool_address}\n" \
            f"🪙 Token0: {token0}\n" \
            f"🪙 Token1: {token1}\n" \
@@ -145,7 +152,7 @@ def send_email(pool_address, token0, token1, fee, liquidity=None):
     # Create email message
     message = MIMEMultipart()
     message['From'] = sender_email
-    message['To'] = receiver_email
+    message['To'] = ', '.join(receiver_emails)
     message['Subject'] = subject
     message.attach(MIMEText(body, 'plain'))
 
@@ -154,21 +161,23 @@ def send_email(pool_address, token0, token1, fee, liquidity=None):
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()  # Enable TLS encryption
             server.login(sender_email, password)
-            server.send_message(message)
-        print(f"✅ Email notification sent successfully for pool: {pool_address}")
+            # Send to all recipients
+            for recipient in receiver_emails:
+                server.send_message(message, to_addrs=[recipient])
+        print(f"✅ Email notification sent successfully to {len(receiver_emails)} recipient(s)")
     except Exception as e:
         print(f"❌ Failed to send email notification: {e}")
 
-# Function to check if a pool involves WLFI token
-def involves_wlfi(token0, token1):
-    """Check if either token in the pool is WLFI."""
-    return token0.lower() == WLFI_ADDRESS.lower() or token1.lower() == WLFI_ADDRESS.lower()
+# Function to check if a pool involves target token
+def involves_target_token(token0, token1):
+    """Check if either token in the pool matches the target token."""
+    return token0.lower() == TOKEN_ADDRESS.lower() or token1.lower() == TOKEN_ADDRESS.lower()
 
 # Main event listener function
 def listen_for_pools():
-    """Listen for new Uniswap V3 pool creation events involving WLFI."""
-    print("Starting WLFI pool listener...")
-    print(f"Monitoring for pools involving WLFI token: {WLFI_ADDRESS}")
+    """Listen for new Uniswap V3 pool creation events involving the target token."""
+    print(f"Starting {TOKEN_SYMBOL} pool listener...")
+    print(f"Monitoring for pools involving token: {TOKEN_ADDRESS}")
     
     # Get the latest block number to start listening from
     latest_block = w3.eth.get_block('latest')['number']
@@ -195,9 +204,9 @@ def listen_for_pools():
                     fee = event['args']['fee']
                     pool_address = event['args']['pool']
                     
-                    # Check if this pool involves WLFI
-                    if involves_wlfi(token0, token1):
-                        print(f"\n🎉 NEW WLFI POOL DETECTED!")
+                    # Check if this pool involves the target token
+                    if involves_target_token(token0, token1):
+                        print(f"\n🎉 NEW {TOKEN_SYMBOL} POOL DETECTED!")
                         print(f"📍 Pool address: {pool_address}")
                         print(f"🪙 Token0: {token0}")
                         print(f"🪙 Token1: {token1}")
@@ -209,7 +218,7 @@ def listen_for_pools():
                         has_liquidity, liquidity_amount = check_pool_liquidity(pool_address)
                         
                         if has_liquidity:
-                            print(f"💰 POOL HAS LIQUIDITY: {liquidity_amount} - WLFI IS LIKELY TRADEABLE! 🚀")
+                            print(f"💰 POOL HAS LIQUIDITY: {liquidity_amount} - {TOKEN_SYMBOL} IS LIKELY TRADEABLE! 🚀")
                         else:
                             print(f"⚠️  Pool has no liquidity yet: {liquidity_amount}")
                         
@@ -220,7 +229,7 @@ def listen_for_pools():
                 
                 latest_block = current_block
             
-            # Wait 12 seconds (approximate Ethereum block time)
+            # Wait for next poll interval
             time.sleep(POLLING_INTERVAL)
             
         except Exception as e:
@@ -231,6 +240,6 @@ if __name__ == "__main__":
     try:
         listen_for_pools()
     except KeyboardInterrupt:
-        print("\nShutting down pool listener...")
+        print(f"\nShutting down {TOKEN_SYMBOL} pool listener...")
     except Exception as e:
         print(f"Fatal error: {e}")
