@@ -64,24 +64,56 @@ class PoolMonitor:
             if current_block <= self.latest_processed_block:
                 return
             
-            logger.debug(f"🔍 Checking blocks {self.latest_processed_block + 1} to {current_block}")
+            # Calculate block range
+            from_block = self.latest_processed_block + 1
+            blocks_to_check = current_block - from_block + 1
             
-            # Create event filter
-            event_filter = self.web3_client.create_event_filter(
-                from_block=self.latest_processed_block + 1,
-                to_block=current_block
-            )
+            logger.debug(f"🔍 Checking blocks {from_block} to {current_block} ({blocks_to_check} blocks)")
             
-            if not event_filter:
-                return
+            # If too many blocks, process in chunks to avoid RPC limits
+            MAX_BLOCKS_PER_QUERY = 1000  # Safe limit for most RPC providers
             
-            # Get events
-            events = self.web3_client.get_events(event_filter)
-            
-            for event in events:
-                await self._process_pool_event(event)
-            
-            self.latest_processed_block = current_block
+            if blocks_to_check > MAX_BLOCKS_PER_QUERY:
+                logger.info(f"📦 Large block range detected ({blocks_to_check} blocks), processing in chunks...")
+                
+                # Process in chunks
+                for chunk_start in range(from_block, current_block + 1, MAX_BLOCKS_PER_QUERY):
+                    chunk_end = min(chunk_start + MAX_BLOCKS_PER_QUERY - 1, current_block)
+                    
+                    logger.debug(f"📦 Processing chunk: {chunk_start} to {chunk_end}")
+                    
+                    # Create event filter for chunk
+                    event_filter = self.web3_client.create_event_filter(
+                        from_block=chunk_start,
+                        to_block=chunk_end
+                    )
+                    
+                    if event_filter:
+                        # Get events for this chunk
+                        events = self.web3_client.get_events(event_filter)
+                        
+                        for event in events:
+                            await self._process_pool_event(event)
+                    
+                    # Update progress
+                    self.latest_processed_block = chunk_end
+                    
+                    # Small delay between chunks to be nice to RPC
+                    await asyncio.sleep(0.1)
+            else:
+                # Normal processing for small ranges
+                event_filter = self.web3_client.create_event_filter(
+                    from_block=from_block,
+                    to_block=current_block
+                )
+                
+                if event_filter:
+                    events = self.web3_client.get_events(event_filter)
+                    
+                    for event in events:
+                        await self._process_pool_event(event)
+                
+                self.latest_processed_block = current_block
             
         except Exception as e:
             logger.error(f"❌ Error checking new pools: {e}")
